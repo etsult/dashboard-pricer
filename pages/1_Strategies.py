@@ -11,6 +11,8 @@ from app.ui.inputs import market_inputs
 from app.ui.legs_editor import edit_legs
 from app.ui.helpers import build_strategy_from_df
 from app.ui.plots import plot_payoff, plot_greek
+from app.ui.strategy_selector import strategy_selector
+
 
 # --- PRICING ---
 from pricer.strategies.strategy import Strategy
@@ -53,15 +55,7 @@ legs_df: pd.DataFrame = edit_legs(default_F=F, default_sigma=sigma_default)
 # STRATEGY BUILDING
 # ------------------------------------------------------------
 
-strategy: Strategy = build_strategy_from_df(
-    df=legs_df,
-    model=model_name,
-    F=F,
-    r=r,
-    q=q,
-    sigma_default=sigma_default,
-    valuation_date=valuation_date,
-)
+strategy: Strategy = strategy_selector(F, r, sigma_default)
 
 
 # ------------------------------------------------------------

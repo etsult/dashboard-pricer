@@ -22,3 +22,7 @@ Educational option pricing environment built with Streamlit.
 
 install blpapi
 pip install --trusted-host blpapi.bloomberg.com --index-url=http://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
+
+
+fix payoff final calendar
+essayer de pricer le long avec du monte carlo,...
