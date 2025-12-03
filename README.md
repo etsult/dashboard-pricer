@@ -18,3 +18,7 @@ Educational option pricing environment built with Streamlit.
 2. Built vol surface from SPX option on yahoo, Calibrate models, heston/dupire sabr on this data, built vol surface for learning.
 3. from bbg ability to monitor in live all the option strategies, and build an historical of the Option Strategy entered in a db sqlite
 4. Maybe identifyes discrepancies in the vol surface to predict trade ideas
+
+
+install blpapi
+pip install --trusted-host blpapi.bloomberg.com --index-url=http://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi
