@@ -1,4 +1,6 @@
 ./venv
 ./notebooks/*
+__pycache__/
 *.pyc
-
+notebooks/
+*.db
