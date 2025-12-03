@@ -9,7 +9,7 @@ class OptionModel(ABC):
     Every model (Black-76, BS, Bachelier...) must implement this API.
     """
 
-    def __init__(self, K, expiry, option_type="call", valuation_date=None):
+    def __init__(self,underlying:str, K, expiry, option_type="call", valuation_date=None):
         self.K = K
         self.expiry = expiry
         self.option_type = option_type.lower()
@@ -26,6 +26,8 @@ class OptionModel(ABC):
 
         self.expiry = expiry
         self.valuation_date = valuation_date
+        self.underlying = underlying 
+
 
     @property
     def tau(self):

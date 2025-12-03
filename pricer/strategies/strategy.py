@@ -5,6 +5,7 @@ from typing import List, Tuple, Dict, Any
 from datetime import datetime
 import numpy as np
 import pandas as pd
+from market_data.schema import OptionQuote
 
 from pricer.models.base import OptionModel
 
@@ -163,3 +164,14 @@ class Strategy:
             })
 
         return pd.DataFrame(rows)
+    
+    def update_live_prices(self, option_quotes: list[OptionQuote]):
+        for opt, qty, label in self.legs:
+            # matcher par strike + expiry + type
+            for q in option_quotes:
+                if q.strike == opt.K and q.expiry == opt.expiry and q.call_put[0].lower() == opt.option_type[0]:
+                    opt.live_bid = q.bid
+                    opt.live_ask = q.ask
+                    opt.live_mid = q.mid
+                    opt.live_delta = q.delta
+                    opt.live_iv = q.implied_vol
