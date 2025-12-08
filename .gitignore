@@ -5,3 +5,4 @@ __pycache__/
 notebooks/
 *.db
 venv312/
+venv/
