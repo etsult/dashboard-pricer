@@ -6,3 +6,4 @@ notebooks/
 *.db
 venv312/
 venv/
+storage/

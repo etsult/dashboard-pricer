@@ -19,6 +19,7 @@ Educational option pricing environment built with Streamlit.
 3. from bbg ability to monitor in live all the option strategies, and build an historical of the Option Strategy entered in a db sqlite
 4. Maybe identifyes discrepancies in the vol surface to predict trade ideas
 
+5. Improve vol surface with SVI parametrization
 
 install blpapi
 pip install --trusted-host blpapi.bloomberg.com --index-url=http://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi

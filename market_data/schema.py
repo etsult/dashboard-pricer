@@ -16,4 +16,4 @@ class OptionQuote:
     volume: Optional[int]
 
     implied_vol: Optional[float]
-    delta: Optional[float]  # Yahoo does NOT provide this, we compute later
+    delta: Optional[float]
