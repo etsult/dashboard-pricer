@@ -4,3 +4,5 @@ pandas
 scipy
 numpy
 yfinance
+scikit-learn
+streamlit
