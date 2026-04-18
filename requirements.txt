@@ -4,3 +4,17 @@ pandas
 scipy
 numpy
 yfinance
+requests
+python-dotenv
+# FastAPI stack
+fastapi
+uvicorn[standard]
+pydantic>=2.0
+sqlalchemy>=2.0
+ccxt
+apscheduler
+# Testing
+pytest
+pytest-html
+# QuantLib — optional, used only for benchmark/validation (pip install QuantLib)
+# QuantLib
