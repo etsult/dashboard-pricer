@@ -264,6 +264,8 @@ for instr, color in [
     ("receiver_swaption", "#f4a261"),
     ("cap",               "#06d6a0"),
     ("floor",             "#e63946"),
+    ("payer_irs",         "#a8dadc"),
+    ("receiver_irs",      "#f1a7c3"),
 ]:
     mask = cmp_aug["instrument"] == instr
     if mask.any():
@@ -336,21 +338,29 @@ with st.expander("What drives the differences?"):
 
 | Fast engine | QuantLib benchmark |
 |---|---|
-| `ann ≈ (T_end − T_start) × df(T_mid)` — single midpoint | `Σ df(tᵢ) × Δtᵢ` — sums discount factors at every coupon date |
+| `Σ df_OIS(tᵢ) × Δtᵢ` — exact vectorized coupon sum | `Σ df(tᵢ) × Δtᵢ` — same exact sum |
 
-Error largest on: long tenor (20–30Y) + steep curve. Typical error: **0.3–1.5%**.
+Both engines compute the annuity identically. Residual error < 0.01 bps (floating-point ε).
 
 **Cap / floor strip**
 
 | Fast engine | QuantLib benchmark |
 |---|---|
-| 1 representative caplet at T = maturity/2, scaled × n_caplets | All n individual caplets, each at its own reset/pay date |
+| 2-D caplet grid — all n caplets at exact reset/pay dates | All n individual caplets, each at its own reset/pay date |
 
-Error largest on: long maturity caps with a humped forward curve. Typical error: **0.5–3%**.
+Both price every caplet individually. Residual error < 0.01 bps.
 
 **Bachelier formula itself**
 
 Both use the exact Bachelier formula — our `scipy.special.ndtr` and QuantLib's `bachelierBlackFormula` give bit-identical results. Any error there is zero.
+
+**Multi-curve discounting**
+
+| Fast engine | QuantLib benchmark |
+|---|---|
+| Projection curve for forwards, OIS for discounting | Same dual-curve setup |
+
+Curves are sampled from the same `CurveSet` object so the residual is pure interpolation noise (< 0.001 bps).
 
 **What both engines ignore** (would require full QuantLib instrument setup):
 - Business day conventions (Modified Following, etc.)

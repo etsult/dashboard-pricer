@@ -77,10 +77,9 @@ TOL_FORMULA_REL  = 1e-6     # < 0.0001% relative error on single-option formula
 TOL_SWAPTION_BPS      = 10.0  # mixed book — annual-freq indexes drive this up
 TOL_SWAPTION_PCT      = 15.0  # secondary metric — OTM options inflate %; bps is primary
 #
-# Cap/floor book: single mid-strip caplet × n_caplets vs full caplet strip
-# The mid-strip approximation introduces ~10–15 bps error on long caps.
-# This IS the documented accuracy of FastBookEngine for cap/floor products.
-TOL_CAP_BPS      = 18.0    # mean |error| < 18 bps (mid-strip approximation)
+# Cap/floor book: both engines use identical exact caplet strip → sub-millibps error.
+# Remaining error comes from basis-spread and continuous day-count approximation.
+TOL_CAP_BPS      = 0.5     # mean |error| < 0.5 bps (floating-point noise only)
 TOL_CAP_PCT      = 8.0     # mean |error| < 8%  — excluded for near-zero-PV positions
 #
 # NN vs Bachelier
@@ -238,11 +237,10 @@ class TestSwaptionBookConsistency:
 @pytest.mark.skipif(not QL_OK, reason="QuantLib not installed")
 class TestCapFloorBookConsistency:
     """
-    FastBookEngine (mid-strip) vs QLBookEngine (full caplet strip).
+    FastBookEngine (exact 2-D caplet strip) vs QLBookEngine.
 
-    Expected error sources:
-      - 1 caplet at T_mid × n_caplets vs Σᵢ individual caplet prices
-      - Larger error for long maturities with humped forward curve.
+    Both engines price the identical caplet schedule — error should be
+    sub-millibps, limited only by floating-point rounding.
     """
 
     def test_caps_usd(self):

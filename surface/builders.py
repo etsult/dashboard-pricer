@@ -1,160 +1,172 @@
 # surface/builders.py
+"""
+Implied vol surface builder.
 
-import os
-from pathlib import Path
+Steps:
+  1. Clean raw OptionQuote list (filter illiquid, zero-bid, extreme moneyness).
+  2. Convert to per-expiry (k, iv) pairs in total-variance space.
+  3. Dispatch to the chosen parametric model (SVI / SSVI / Heston).
+  4. Return (surface_df, raw_df, params_df) for display.
+
+surface_df : index = log-moneyness grid, columns = T (years), values = IV (decimal)
+raw_df     : one row per clean market point for scatter overlay plots
+params_df  : model calibration output (format depends on model)
+"""
+
+from __future__ import annotations
+
 from datetime import datetime
+from pathlib import Path
 from math import log, sqrt, exp
-import pandas as pd
-import numpy as np
-from typing import List
-from scipy.stats import norm
-from scipy.interpolate import griddata
-from market_data.schema import OptionQuote
 
+import numpy as np
+import pandas as pd
+from scipy.stats import norm
+from typing import List
+
+from market_data.schema import OptionQuote
+from surface.models import MODEL_REGISTRY
 
 STORAGE_DIR = Path(__file__).resolve().parents[1] / "storage"
 
-
-def _bs_delta(spot: float, strike: float, t: float, vol: float, rate: float, div: float, option_type: str) -> float:
-    """Black-Scholes delta for calls (+) and puts (-)."""
-    if vol <= 0 or t <= 0 or spot <= 0 or strike <= 0:
-        return np.nan
-    try:
-        d1 = (log(spot / strike) + (rate - div + 0.5 * vol * vol) * t) / (vol * sqrt(t))
-    except Exception:
-        return np.nan
-    disc = exp(-div * t)
-    if option_type.lower() == "call":
-        return disc * norm.cdf(d1)
-    else:
-        return disc * (norm.cdf(d1) - 1.0)
+# Output grids
+K_GRID = np.linspace(-0.50, 0.50, 100)   # log-moneyness [-50%, +50%]
+N_T    = 30                                # number of expiry slices on output
 
 
-def build_vol_surface(quotes: List[OptionQuote], spot: float, rate: float = 0.02, dividend_yield: float = 0.0):
+# ── Cleaning ──────────────────────────────────────────────────────────────────
+
+def _clean(
+    quotes: List[OptionQuote],
+    spot: float,
+    rate: float,
+    div: float,
+    now: datetime,
+) -> pd.DataFrame:
     """
-    Build a moneyness-based implied volatility surface:
-    - compute forward F(T) from spot/rate/dividend
-    - use log-moneyness ln(K/F) as x-axis (handles call/put symmetry)
-    - per-expiry filtering in log-moneyness space
-    - quadratic fit per expiry
-    - bilinear interpolation onto a regular (log-moneyness, days) grid
-    returns: DataFrame indexed by log-moneyness, columns as expiry datetimes, values IV
+    Convert quotes to a clean DataFrame with columns [expiry, T, k, iv].
+
+    Filters applied:
+    - Drop if both bid and ask are 0 or None (no market)
+    - Drop if IV is NaN / <= 0 / > 3.0 (300%)
+    - Drop if T < 3 days (avoid pinning near expiry)
+    - Drop moneyness |k| > 0.50 (deep OTM/ITM, unreliable)
+    - Per-expiry: keep only call or put at each strike (use put below forward, call above)
+    - Per-expiry: IQR filter (remove IV outliers ±2×IQR around median)
+    - Require ≥ 5 points per expiry straddling ATM
     """
+    rows = []
+    for q in quotes:
+        bid = q.bid or 0.0
+        ask = q.ask or 0.0
+        iv  = q.implied_vol
 
-    now = datetime.utcnow()
-
-    # Convert to DataFrame (keep option type for stats/debug)
-    df_raw = pd.DataFrame([{
-        "expiry": q.expiry,
-        "strike": q.strike,
-        "iv": q.implied_vol
-    } for q in quotes])
-
-    # Persist raw pull (before any filtering) for debugging
-    try:
-        STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-        df_raw.to_csv(STORAGE_DIR / "last_yahoo_raw.csv", index=False)
-    except OSError as exc:
-        print(f"[vol-surface] ⚠️ could not write raw yahoo CSV: {exc}")
-
-    df = df_raw.copy()
-
-    # Drop missing IV
-    df = df.dropna(subset=["iv"])
-
-    # Remove absurd IV values (Yahoo has glitches)
-    df = df[(df["iv"] > 0.001) & (df["iv"] < 2.0)]  # keep 0.1% to 200%
-
-    # Compute time to expiry (years) and forward, then log-moneyness
-    df["t"] = (df["expiry"] - now).dt.total_seconds() / (365.25 * 24 * 3600)
-    df["t"] = df["t"].clip(lower=1 / 365)  # min 1 day to avoid zero maturity
-    df["forward"] = spot * np.exp((rate - dividend_yield) * df["t"])
-    df["log_m"] = np.log(df["strike"] / df["forward"])
-
-    # Per-expiry filtering in log-moneyness space
-    fit_rows = []
-    per_expiry_stats = []
-
-    log_m_grid = np.linspace(-0.5, 0.5, 81)  # approx strike from ~60% to ~165% of F
-
-    for expiry, g in df.groupby("expiry"):
-        # basic band on moneyness
-        g = g[(g["log_m"] > log_m_grid.min() - 0.05) & (g["log_m"] < log_m_grid.max() + 0.05)]
-        if len(g) < 4:
+        if bid <= 0 and ask <= 0:
+            continue
+        if iv is None or np.isnan(iv) or iv <= 0.001 or iv > 3.0:
             continue
 
-        mean_iv = g["iv"].mean()
-        std_iv = g["iv"].std()
-        if not np.isnan(std_iv) and std_iv > 0:
-            g = g[(g["iv"] > mean_iv - 2 * std_iv) & (g["iv"] < mean_iv + 2 * std_iv)]
-
-        if len(g) < 4:
-            continue
-        if not ((g["log_m"] < 0).any() and (g["log_m"] > 0).any()):
-            continue  # need both wings around ATM
-
-        try:
-            coef = np.polyfit(g["log_m"], g["iv"], 2)
-        except Exception:
+        T = (q.expiry - now).total_seconds() / (365.25 * 86400)
+        if T < 3 / 365:
             continue
 
-        # sanity on curvature (avoid explosive fits)
-        if abs(coef[0]) > 10:
+        F = spot * exp((rate - div) * T)
+        k = log(q.strike / F)
+        if abs(k) > 0.55:
             continue
 
-        iv_fit = np.polyval(coef, log_m_grid)
-        iv_fit = np.maximum(iv_fit, 0.0001)
-        t_days = (expiry - df["expiry"].min()).days
-        for m_val, iv_val in zip(log_m_grid, iv_fit):
-            fit_rows.append({"expiry": expiry, "days": t_days, "log_m": m_val, "iv": iv_val})
+        rows.append({
+            "expiry": q.expiry,
+            "T":      T,
+            "k":      k,
+            "iv":     iv,
+            "strike": q.strike,
+            "F":      F,
+            "type":   q.option_type,
+            "bid":    bid,
+            "ask":    ask,
+        })
 
-        per_expiry_stats.append(
-            {
-                "expiry": expiry,
-                "n_points": len(g),
-                "coef_a": coef[0],
-                "coef_b": coef[1],
-                "coef_c": coef[2],
-                "mean_iv": mean_iv,
-                "std_iv": std_iv,
-            }
-        )
-
-    if not fit_rows:
-        print("[vol-surface] ❌ no expiries passed filtering; returning empty surface")
+    if not rows:
         return pd.DataFrame()
 
-    fit_df = pd.DataFrame(fit_rows)
+    df = pd.DataFrame(rows)
 
-    # Regularize on a daily expiry grid using bilinear interpolation
-    min_day = fit_df["days"].min()
-    max_day = fit_df["days"].max()
-    expiry_grid_days = np.linspace(min_day, max_day, int(max_day - min_day + 1)) if max_day > min_day else np.array([min_day])
+    # Use OTM options only: put if k < 0, call if k > 0 (avoid put-call duality artifacts)
+    df = df[((df["k"] <= 0) & (df["type"] == "put")) |
+            ((df["k"] >= 0) & (df["type"] == "call"))]
 
-    grid_x, grid_y = np.meshgrid(log_m_grid, expiry_grid_days, indexing="xy")
-    points = fit_df[["log_m", "days"]].values
-    values = fit_df["iv"].values
+    # Per-expiry IQR filter
+    clean_rows = []
+    for _, grp in df.groupby("expiry"):
+        q25, q75 = grp["iv"].quantile(0.25), grp["iv"].quantile(0.75)
+        iqr = q75 - q25
+        lo, hi = q25 - 2.0 * iqr, q75 + 2.0 * iqr
+        grp = grp[(grp["iv"] >= max(lo, 0.001)) & (grp["iv"] <= hi)]
+        if len(grp) < 5:
+            continue
+        if not ((grp["k"] < -0.01).any() and (grp["k"] > 0.01).any()):
+            continue
+        clean_rows.append(grp)
 
-    grid_z = griddata(points, values, (grid_x, grid_y), method="linear")
-    if np.isnan(grid_z).any():
-        nearest = griddata(points, values, (grid_x, grid_y), method="nearest")
-        grid_z = np.where(np.isnan(grid_z), nearest, grid_z)
+    if not clean_rows:
+        return pd.DataFrame()
 
-    expiry_dates = [df["expiry"].min() + pd.Timedelta(days=float(d)) for d in expiry_grid_days]
-    surface = pd.DataFrame(grid_z, columns=log_m_grid, index=expiry_dates).T  # index=log-m, columns=dates
+    return pd.concat(clean_rows, ignore_index=True)
 
-    # -------- Debug + persistence ---------------------------------
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def build_vol_surface(
+    quotes: List[OptionQuote],
+    spot: float,
+    rate: float = 0.04,
+    dividend_yield: float = 0.0,
+    model: str = "SVI",
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Build a smooth implied vol surface from raw option quotes.
+
+    Parameters
+    ----------
+    quotes         : raw option chain from any provider
+    spot           : underlying spot / index level
+    rate           : risk-free rate (decimal)
+    dividend_yield : continuous dividend yield
+    model          : "SVI" | "SSVI" | "Heston"
+
+    Returns
+    -------
+    surf_df   : DataFrame — index=log-moneyness, columns=T (years), values=IV
+    params_df : model calibration params / diagnostics
+    raw_df    : clean market points (for scatter overlay)
+    """
+    now = datetime.utcnow()
+    raw_df = _clean(quotes, spot, rate, dividend_yield, now)
+
+    if raw_df.empty:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    # Build T_grid from actual expiry buckets
+    T_vals = np.sort(raw_df["T"].unique())
+    if len(T_vals) < 2:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    T_grid = np.linspace(T_vals.min(), T_vals.max(), N_T)
+
+    # Dispatch to chosen model
+    fitter = MODEL_REGISTRY.get(model)
+    if fitter is None:
+        raise ValueError(f"Unknown model '{model}'. Choose from: {list(MODEL_REGISTRY)}")
+
+    surf_df, params_df, _ = fitter(raw_df, K_GRID, T_grid)
+
+    # Persist debug files
     try:
         STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-        df.to_csv(STORAGE_DIR / "last_option_quotes.csv", index=False)
-        fit_df.to_csv(STORAGE_DIR / "last_vol_surface_fit_points.csv", index=False)
-        surface.to_csv(STORAGE_DIR / "last_vol_surface.csv")
-        pd.DataFrame(per_expiry_stats).to_csv(STORAGE_DIR / "last_vol_surface_fit_stats.csv", index=False)
-    except OSError as exc:
-        print(f"[vol-surface] ⚠️ could not write debug CSVs: {exc}")
+        raw_df.to_csv(STORAGE_DIR / "last_option_quotes.csv", index=False)
+        surf_df.to_csv(STORAGE_DIR / "last_vol_surface.csv")
+    except OSError:
+        pass
 
-    print(f"[vol-surface] raw rows={len(df_raw)}, post-filter rows={len(df)}")
-    print(f"[vol-surface] expiries kept={len(per_expiry_stats)}, log-m grid points per expiry={len(log_m_grid)}")
-    print(f"[vol-surface] surface shape={surface.shape} (log-m x expiry)")
-
-    return surface
+    return surf_df, params_df, raw_df

@@ -140,7 +140,7 @@ def _run_book_comparison(n: int) -> tuple[list[TestResult], pd.DataFrame]:
         quarterly indexes (SOFR_3M, EUR_3M …): ~3 bps
         annual indexes   (SOFR, TERM_SOFR_12M): ~12 bps
         mixed USD/EUR book:                     ~10 bps
-      Caps/floors — mid-strip approximation:    ~15 bps
+      Caps/floors — exact vectorized caplet strip (same as QL): < 0.01 bps
       % error is not used for PASS/FAIL: deep-OTM positions inflate it
       (EUR floors at K≫F_atm have near-zero PV, making % meaningless).
     """
@@ -159,8 +159,8 @@ def _run_book_comparison(n: int) -> tuple[list[TestResult], pd.DataFrame]:
     TOL_BPS = {
         "payer_swaption":    10.0,
         "receiver_swaption": 10.0,
-        "cap":               18.0,
-        "floor":             18.0,
+        "cap":                0.5,
+        "floor":              0.5,
     }
     CCY_GROUPS = {"USD": USD_INDEXES, "EUR": EUR_INDEXES, "ALL": ALL_INDEXES}
 
@@ -509,8 +509,8 @@ Any larger discrepancy would indicate a formula bug.
 Tolerances are calibrated from observed engine accuracy (not arbitrary targets):
 <br>• <strong>Swaptions</strong>: trapezoidal annuity ann ≈ (T_end−T_start)×df(T_mid)
   vs exact coupon-date sum Σdf(tᵢ)·Δtᵢ. Quarterly indexes: ~3 bps. Annual (SOFR, TERM_SOFR_12M): ~12 bps. Mixed book: ≤ 10 bps.
-<br>• <strong>Caps/Floors</strong>: single mid-strip caplet × n_caplets
-  vs full individual caplet strip: ~15 bps. Tolerance: 18 bps.
+<br>• <strong>Caps/Floors</strong>: exact vectorized caplet strip (same schedule as QL):
+  &lt; 0.01 bps. Tolerance: 0.5 bps.
 <br>• <strong>% error omitted</strong>: deep-OTM positions (EUR floors at K≫F_atm) produce near-zero PV,
   making the relative metric uninformative. bps of notional is the only meaningful metric here.
 </div>
@@ -542,8 +542,8 @@ Tolerance: 8 bps (rate-space, per unit annuity × notional).
     <td>(T_end−T_start)×df(T_mid)</td><td>Σ df(tᵢ)·Δtᵢ over coupon dates</td>
     <td>3 bps (qtly) · 12 bps (annual)</td></tr>
 <tr><td>Cap/floor strip</td>
-    <td>1 caplet at T_mid × n_caplets</td><td>All individual caplets priced</td>
-    <td>10–18 bps</td></tr>
+    <td>Exact 2-D vectorized caplet strip</td><td>Exact caplet strip</td>
+    <td class="PASS">&lt; 0.01 bps (floating-point ε)</td></tr>
 <tr><td>NN vs QL formula</td>
     <td>SwaptionNet v1 (ResidualMLP)</td><td>ql.bachelierBlackFormula</td>
     <td class="PASS">0.6–0.9 bps</td></tr>

@@ -11,13 +11,17 @@ from typing import Literal
 class IRPosition:
     """Single IR option position in the book."""
 
-    instrument: Literal["cap", "floor", "payer_swaption", "receiver_swaption"]
+    instrument: Literal[
+        "cap", "floor",
+        "payer_swaption", "receiver_swaption",
+        "payer_irs", "receiver_irs",
+    ]
     index_key: str           # key in INDEX_CATALOG
     notional: float          # in currency units
     strike: float            # decimal (e.g. 0.04 = 4%)
-    expiry_y: float          # years to expiry / option expiry
-    tenor_y: float           # cap maturity or swap tenor (years)
-    sigma_n: float           # ATM normal vol (decimal, e.g. 0.006 = 60 bps/yr)
+    expiry_y: float          # option expiry or swap start date (years from now)
+    tenor_y: float           # cap maturity / swap tenor (years)
+    sigma_n: float = 0.0     # ATM normal vol; unused for IRS (default 0)
     direction: int = 1       # +1 long, -1 short
 
     # Convention offsets (in years)
@@ -34,12 +38,15 @@ class IRPosition:
             instr_map = {
                 "cap": "Cap", "floor": "Floor",
                 "payer_swaption": "Payer Swptn", "receiver_swaption": "Rcvr Swptn",
+                "payer_irs": "Payer IRS", "receiver_irs": "Rcvr IRS",
             }
+            is_irs = self.instrument in ("payer_irs", "receiver_irs")
+            suffix = f"K={self.strike*100:.2f}%" if is_irs else (
+                f"K={self.strike*100:.2f}% σ={self.sigma_n*10000:.0f}bps"
+            )
             self.label = (
                 f"{side} {instr_map.get(self.instrument, self.instrument)} "
-                f"{self.expiry_y:.1f}Y×{self.tenor_y:.1f}Y "
-                f"K={self.strike*100:.2f}% "
-                f"σ={self.sigma_n*10000:.0f}bps"
+                f"{self.expiry_y:.1f}Y×{self.tenor_y:.1f}Y {suffix}"
             )
 
 

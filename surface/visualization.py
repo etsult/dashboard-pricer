@@ -1,107 +1,168 @@
 # surface/visualization.py
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
-from scipy.interpolate import griddata
+from plotly.subplots import make_subplots
 
 
-# -------------------------------------------------------------------
-# 1. Minimal cleaning: only sort axes, keep ALL data (no dropping)
-# -------------------------------------------------------------------
-def prepare_surface(surface_df: pd.DataFrame) -> pd.DataFrame:
-    # Sort strikes (index)
-    surface_df = surface_df.sort_index()
-
-    # Sort expiries (columns)
-    expiries = pd.to_datetime(surface_df.columns)
-    expiries = np.sort(expiries)
-
-    # Reindex columns in sorted order
-    surface_df = surface_df.reindex(columns=expiries)
-
-    return surface_df
+_COLORSCALE = "Plasma"
 
 
-def _regularize_grid(surface_df: pd.DataFrame):
-    """Interpolate onto a regular grid for a smoother surface (linear with nearest fallback)."""
+def plot_surface_3d(surf_df: pd.DataFrame, title: str = "Implied Volatility Surface") -> go.Figure:
+    """
+    3D surface plot from surf_df (index=log-moneyness, columns=T_years, values=IV).
+    """
+    k_vals = surf_df.index.values.astype(float)
+    T_vals = surf_df.columns.values.astype(float)
+    z = surf_df.values.astype(float) * 100  # → percent
 
-    surface_df = prepare_surface(surface_df)
+    T_days = T_vals * 365
 
-    # Axes (index = log-moneyness, columns = expiries)
-    log_m = surface_df.index.values
-    expiries = pd.to_datetime(surface_df.columns).values
-    expiries_numeric = (expiries - expiries.min()) / np.timedelta64(1, "D")
-
-    # If the grid is very large, downsample expiries to keep plotting reasonable
-    max_expiry_cols = 220
-    if surface_df.shape[1] > max_expiry_cols:
-        step = int(np.ceil(surface_df.shape[1] / max_expiry_cols))
-        surface_df = surface_df.iloc[:, ::step]
-        expiries = pd.to_datetime(surface_df.columns).values
-        expiries_numeric = (expiries - expiries.min()) / np.timedelta64(1, "D")
-
-    # Raw grid (rows=log-m, cols=expiries) → transpose so z[y, x]
-    z_raw = surface_df.values.astype(float)
-    z_raw = np.where((z_raw > 0) & (z_raw < 5.0), z_raw, np.nan)
-    z = z_raw.T
-
-    X_known, Y_known = np.meshgrid(log_m, expiries_numeric, indexing="xy")
-    mask = ~np.isnan(z)
-
-    # If too little data, return raw grid to avoid overfitting
-    if mask.sum() < 6:
-        return strikes, expiries_numeric, z
-
-    points = np.column_stack((X_known[mask], Y_known[mask]))
-    values = z[mask]
-
-    # Target grid with light padding to allow extension beyond convex hull
-    strike_span = log_m.max() - log_m.min()
-    expiry_span = expiries_numeric.max() - expiries_numeric.min()
-    strike_grid = np.linspace(log_m.min() - 0.05 * strike_span, log_m.max() + 0.05 * strike_span, 120)
-    expiry_grid = np.linspace(expiries_numeric.min() - 0.05 * expiry_span, expiries_numeric.max() + 0.05 * expiry_span, 70)
-    X_target, Y_target = np.meshgrid(strike_grid, expiry_grid, indexing="xy")
-
-    # Linear interpolation (fast) with nearest fallback to fill holes
-    z_interp = griddata(points, values, (X_target, Y_target), method="linear")
-    if np.isnan(z_interp).any():
-        z_nearest = griddata(points, values, (X_target, Y_target), method="nearest")
-        z_interp = np.where(np.isnan(z_interp), z_nearest, z_interp)
-
-    return strike_grid, expiry_grid, z_interp
-
-
-# -------------------------------------------------------------------
-# 2. Full 3D surface plot (no aggressive cleaning, no clipping)
-# -------------------------------------------------------------------
-def plot_surface(surface_df: pd.DataFrame):
-    log_m, expiries_numeric, z = _regularize_grid(surface_df)
-
-    fig = go.Figure(
-        data=[
-            go.Surface(
-                x=log_m,
-                y=expiries_numeric,
-                z=z,
-                colorscale="Viridis",
-                showscale=True,
-                opacity=0.95,
-                hovertemplate="log-m: %{x:.3f}<br>Days: %{y:.0f}<br>IV: %{z:.2f}<extra></extra>",
-            )
-        ]
-    )
+    fig = go.Figure(go.Surface(
+        x=k_vals,
+        y=T_days,
+        z=z,
+        colorscale=_COLORSCALE,
+        showscale=True,
+        colorbar=dict(title="IV (%)", thickness=15),
+        opacity=0.92,
+        contours=dict(
+            z=dict(show=True, usecolormap=True, highlightcolor="white", project_z=True),
+        ),
+        hovertemplate="log-m: %{x:.3f}<br>Days: %{y:.0f}<br>IV: %{z:.2f}%<extra></extra>",
+    ))
 
     fig.update_layout(
-        title="Implied Volatility Surface",
+        title=dict(text=title, x=0.5),
         scene=dict(
-            xaxis_title="Log-moneyness ln(K/F)",
-            yaxis_title="Days to Expiry",
-            zaxis_title="Implied Vol",
-            camera=dict(eye=dict(x=1.6, y=-1.6, z=0.8)),
+            xaxis=dict(title="Log-moneyness ln(K/F)", dtick=0.1),
+            yaxis=dict(title="Days to Expiry"),
+            zaxis=dict(title="Implied Vol (%)"),
+            camera=dict(eye=dict(x=1.5, y=-1.8, z=0.7)),
+            aspectratio=dict(x=1.5, y=1.0, z=0.6),
         ),
-        autosize=True,
-        margin=dict(l=0, r=0, t=40, b=0),
+        margin=dict(l=0, r=0, t=50, b=0),
+        height=560,
+    )
+    return fig
+
+
+def plot_smile_slices(
+    surf_df: pd.DataFrame,
+    raw_df: pd.DataFrame,
+    n_slices: int = 6,
+) -> go.Figure:
+    """
+    Per-expiry smile: market scatter points + model fitted line.
+    Shows up to n_slices expiries (evenly spaced).
+    """
+    T_vals = surf_df.columns.values.astype(float)
+    k_vals = surf_df.index.values.astype(float)
+
+    # Pick representative expiries
+    idx = np.round(np.linspace(0, len(T_vals) - 1, min(n_slices, len(T_vals)))).astype(int)
+    T_slices = T_vals[idx]
+
+    n_cols = min(3, len(T_slices))
+    n_rows = int(np.ceil(len(T_slices) / n_cols))
+    subplot_titles = [f"T = {T*365:.0f}d ({T:.2f}Y)" for T in T_slices]
+
+    fig = make_subplots(
+        rows=n_rows, cols=n_cols,
+        subplot_titles=subplot_titles,
+        vertical_spacing=0.12,
+        horizontal_spacing=0.06,
     )
 
+    colors = [
+        "#00b4d8", "#e63946", "#2a9d8f", "#f4a261", "#8338ec", "#06d6a0"
+    ]
+
+    for i, T in enumerate(T_slices):
+        row = i // n_cols + 1
+        col = i % n_cols + 1
+        color = colors[i % len(colors)]
+
+        # Model curve
+        iv_fit = surf_df[T].values * 100  # percent
+        fig.add_trace(
+            go.Scatter(
+                x=k_vals, y=iv_fit,
+                mode="lines",
+                line=dict(color=color, width=2.5),
+                name=f"{T*365:.0f}d model",
+                showlegend=(i == 0),
+                legendgroup="model",
+            ),
+            row=row, col=col,
+        )
+
+        # Market scatter — match to nearest T
+        if not raw_df.empty:
+            T_raw = raw_df["T"].values
+            nearest = T_raw[np.argmin(np.abs(T_raw - T))]
+            if abs(nearest - T) < 0.05:  # within 18 days
+                mkt = raw_df[np.abs(raw_df["T"] - nearest) < 0.01]
+                if not mkt.empty:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=mkt["k"].values, y=mkt["iv"].values * 100,
+                            mode="markers",
+                            marker=dict(color=color, size=6, opacity=0.7,
+                                        line=dict(color="white", width=0.5)),
+                            name=f"{T*365:.0f}d mkt",
+                            showlegend=(i == 0),
+                            legendgroup="market",
+                        ),
+                        row=row, col=col,
+                    )
+
+        fig.update_xaxes(title_text="log(K/F)", row=row, col=col)
+        fig.update_yaxes(title_text="IV (%)", row=row, col=col)
+
+    fig.update_layout(
+        height=300 * n_rows + 60,
+        margin=dict(t=60, b=30, l=40, r=10),
+        legend=dict(orientation="h", y=-0.05),
+    )
+    return fig
+
+
+def plot_term_structure(surf_df: pd.DataFrame, raw_df: pd.DataFrame) -> go.Figure:
+    """ATM implied vol term structure: model + market ATM points."""
+    T_vals = surf_df.columns.values.astype(float)
+    k_vals = surf_df.index.values.astype(float)
+
+    # ATM IV = interpolate at k=0 for each T
+    atm_idx = np.argmin(np.abs(k_vals))
+    atm_iv_model = surf_df.iloc[atm_idx].values * 100
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=T_vals * 365, y=atm_iv_model,
+        mode="lines",
+        line=dict(color="#00b4d8", width=2.5),
+        name="Model ATM IV",
+    ))
+
+    if not raw_df.empty:
+        # Per expiry, take the point closest to k=0
+        atm_mkt = raw_df.groupby("T").apply(
+            lambda g: g.iloc[np.argmin(np.abs(g["k"].values))]
+        ).reset_index(drop=True)
+        fig.add_trace(go.Scatter(
+            x=atm_mkt["T"].values * 365, y=atm_mkt["iv"].values * 100,
+            mode="markers",
+            marker=dict(color="#f4a261", size=9, symbol="diamond"),
+            name="Market ATM",
+        ))
+
+    fig.update_layout(
+        xaxis_title="Days to Expiry",
+        yaxis_title="ATM IV (%)",
+        height=320,
+        margin=dict(t=20, b=40),
+        legend=dict(orientation="h", y=1.08),
+    )
     return fig

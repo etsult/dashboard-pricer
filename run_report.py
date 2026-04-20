@@ -22,12 +22,12 @@ def main():
     parser = argparse.ArgumentParser(
         description="Generate pricer consistency benchmark report"
     )
-    parser.add_argument("--n-formula", type=int, default=500,
-                        help="Formula-level samples per scenario (default 500)")
-    parser.add_argument("--n-book",    type=int, default=200,
+    parser.add_argument("--n-formula", type=int, default=50000,
+                        help="Formula-level samples per scenario (default 50000)")
+    parser.add_argument("--n-book",    type=int, default=20000,
                         help="Book positions per product/CCY group (default 200)")
-    parser.add_argument("--n-nn",      type=int, default=500,
-                        help="NN samples per convention (default 500)")
+    parser.add_argument("--n-nn",      type=int, default=50000,
+                        help="NN samples per convention (default 50000)")
     parser.add_argument("--output",    type=str, default="pricer_report.html",
                         help="Output HTML file path (default pricer_report.html)")
     parser.add_argument("--no-browser", action="store_true",
