@@ -52,8 +52,18 @@ export interface VolTermStructureResponse {
 export interface CurvePoint { tenor: number; tenor_label: string; zero_rate_pct: number; discount_factor: number }
 export interface CurveResponse { points: CurvePoint[] }
 
-export interface CapFloorRequest {
-  curve: { type: 'manual'; points: { tenor: number; rate: number }[] }
+type CurveManual = { type: 'manual'; points: { tenor: number; rate: number }[] }
+
+export interface ExoticParams {
+  pricer_model?: 'fast' | 'quantlib' | 'nn'
+  start_shift_y?: number
+  day_count?: 'ACT/360' | 'ACT/365' | '30/360'
+  settlement_delay_y?: number
+  index_key?: string
+}
+
+export interface CapFloorRequest extends ExoticParams {
+  curve: CurveManual
   instrument_type: 'cap' | 'floor'
   notional: number; maturity: number; freq: number
   vol_type: 'normal' | 'lognormal'; sigma: number; strike: number
@@ -61,12 +71,14 @@ export interface CapFloorRequest {
 
 export interface CapFloorResponse {
   price: number; price_bps: number; strike_pct: number
+  caplet_details: { reset_years: number; pay_years: number; fwd_rate_pct: number; discount_factor: number; pv: number }[]
   sensitivity_strike: { x: number; price: number }[]
   sensitivity_vol: { x: number; price: number }[]
+  pricer_model: string
 }
 
-export interface SwaptionRequest {
-  curve: { type: 'manual'; points: { tenor: number; rate: number }[] }
+export interface SwaptionRequest extends ExoticParams {
+  curve: CurveManual
   swaption_type: 'payer' | 'receiver'
   notional: number; expiry: number; swap_tenor: number; freq: number
   vol_type: 'normal' | 'lognormal'; sigma: number; strike: number
@@ -77,6 +89,34 @@ export interface SwaptionResponse {
   annuity: number; moneyness_bps: number; moneyness_label: string
   sensitivity_strike: { x: number; price: number }[]
   sensitivity_vol: { x: number; price: number }[]
+  pricer_model: string
+}
+
+export interface IRSRequest {
+  curve: CurveManual
+  irs_type: 'payer' | 'receiver'
+  notional: number
+  start_shift_y?: number
+  tenor_y: number
+  fixed_rate: number
+  fixed_freq?: number
+  float_freq?: number
+  day_count?: 'ACT/360' | 'ACT/365' | '30/360'
+  index_key?: string
+  pricer_model?: 'fast' | 'quantlib'
+  xccy?: boolean
+  domestic_ccy?: string
+  foreign_ccy?: string
+  fx_rate?: number
+  basis_spread_bps?: number
+}
+
+export interface IRSResponse {
+  price: number; price_bps: number; par_swap_rate_pct: number
+  annuity: number; fixed_leg_pv: number; float_leg_pv: number; dv01: number
+  leg_details: { pay_years: number; fixed_cashflow: number; float_cashflow: number; discount_factor: number; net_pv: number }[]
+  sensitivity_rate: { x: number; price: number }[]
+  pricer_model: string
 }
 
 export interface BookPosition {
@@ -128,6 +168,9 @@ export const priceCapFloor = (req: CapFloorRequest) =>
 export const priceSwaption = (req: SwaptionRequest) =>
   api.post<SwaptionResponse>('/ir/swaption', req).then(r => r.data)
 
+export const priceIRS = (req: IRSRequest) =>
+  api.post<IRSResponse>('/ir/irs', req).then(r => r.data)
+
 export const generateBook = (req: object) =>
   api.post<BookResponse>('/ir/books/generate', req).then(r => r.data)
 
@@ -139,3 +182,28 @@ export const compareStrategies = (req: CompareRequest) =>
 
 export const fetchVolCubeSwaption = (ccy: string) =>
   api.get(`/vol-cube/swaption/${ccy}`).then(r => r.data)
+
+export interface TimingEntryPoint {
+  date: string
+  final_return_pct: number
+  max_drawdown_pct: number
+  time_to_recover_days: number | null
+  ever_recovered: boolean
+}
+
+export interface TimingAnalysisResult {
+  ticker: string
+  end_date: string
+  n_entries: number
+  by_entry: TimingEntryPoint[]
+  worst_entry: { date: string; entry_price: number; final_return_pct: number; time_to_recover_days: number | null; ever_recovered: boolean }
+  best_entry:  { date: string; entry_price: number; final_return_pct: number }
+  median_return_pct: number
+  pct_entries_positive: number
+  worst_dd_path: { dates: string[]; drawdown_pct: number[]; portfolio_value: number[] }
+}
+
+export const runTimingAnalysis = (req: {
+  ticker: string; start: string; end: string
+  total_amount: number; transaction_cost_pct: number; sample_every_n_days?: number
+}) => api.post<TimingAnalysisResult>('/research/backtest/timing-analysis', req).then(r => r.data)

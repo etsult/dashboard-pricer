@@ -10,6 +10,7 @@ import DeltaHedge from '@/pages/DeltaHedge'
 import RatesHub from '@/pages/RatesHub'
 import StrategyCompare from '@/pages/StrategyCompare'
 import PortfolioRisk from '@/pages/PortfolioRisk'
+import IntradayGreeks from '@/pages/IntradayGreeks'
 import BookGenerator from '@/pages/BookGenerator'
 import VolCube from '@/pages/VolCube'
 import Benchmark from '@/pages/Benchmark'
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="rates-hub" element={<RatesHub />} />
           <Route path="strategy-compare" element={<StrategyCompare />} />
           <Route path="portfolio-risk" element={<PortfolioRisk />} />
+          <Route path="intraday-greeks" element={<IntradayGreeks />} />
           <Route path="book-generator" element={<BookGenerator />} />
           <Route path="vol-cube" element={<VolCube />} />
           <Route path="benchmark" element={<Benchmark />} />

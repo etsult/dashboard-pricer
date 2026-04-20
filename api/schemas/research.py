@@ -117,6 +117,15 @@ class CompareResponse(BaseModel):
 
 # ─── All Weather ──────────────────────────────────────────────────────────────
 
+class TimingAnalysisRequest(BaseModel):
+    ticker: str = Field("SPY")
+    start: date = Field(...)
+    end: date = Field(...)
+    total_amount: float = Field(10_000.0, gt=0)
+    transaction_cost_pct: float = Field(0.0, ge=0, le=0.02)
+    sample_every_n_days: int = Field(5, ge=1, le=30)
+
+
 class AllWeatherRequest(BaseModel):
     start: date = Field(...)
     end: date = Field(...)
