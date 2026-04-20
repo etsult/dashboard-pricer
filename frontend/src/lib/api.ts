@@ -61,6 +61,7 @@ export interface CapFloorRequest {
 
 export interface CapFloorResponse {
   price: number; price_bps: number; strike_pct: number
+  caplet_details?: { reset_years: number; pay_years: number; fwd_rate_pct: number; discount_factor: number; pv: number }[]
   sensitivity_strike: { x: number; price: number }[]
   sensitivity_vol: { x: number; price: number }[]
 }

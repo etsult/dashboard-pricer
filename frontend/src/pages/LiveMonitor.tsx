@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { Radio, Wifi, WifiOff, RefreshCw } from 'lucide-react'
-import { Card, CardHeader, CardTitle, Stat } from '@/components/ui/card'
+import { Card, Stat } from '@/components/ui/card'
 import { Select } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'

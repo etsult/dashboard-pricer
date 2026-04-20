@@ -8,7 +8,6 @@ import { Select } from '@/components/ui/select'
 import { Tabs } from '@/components/ui/tabs'
 import { PlotlyChart } from '@/components/charts/PlotlyChart'
 import { priceCapFloor, priceSwaption, type CapFloorResponse, type SwaptionResponse } from '@/lib/api'
-import { fmt } from '@/lib/utils'
 
 // Simple flat yield curve defaults
 const DEFAULT_CURVE = [
@@ -36,7 +35,7 @@ export default function IROptions() {
   const curve = { type: 'manual' as const, points: DEFAULT_CURVE }
   const sigmaDecimal = volType === 'normal' ? sigma / 10000 : sigma / 100
 
-  const { mutate, isPending, error } = useMutation({
+  const { mutate, isPending, error } = useMutation<CapFloorResponse | SwaptionResponse>({
     mutationFn: () => isSwaption
       ? priceSwaption({ curve, swaption_type: instrType as 'payer' | 'receiver', notional, expiry, swap_tenor: swapTenor, freq, vol_type: volType, sigma: sigmaDecimal, strike })
       : priceCapFloor({ curve, instrument_type: instrType as 'cap' | 'floor', notional, maturity, freq, vol_type: volType, sigma: sigmaDecimal, strike }),

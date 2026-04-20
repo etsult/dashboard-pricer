@@ -1,12 +1,10 @@
 import { useEffect, useRef } from 'react'
-import type { Data, Layout, Config } from 'plotly.js'
+import type { Layout, Config } from 'plotly.js'
 
-// Dynamically imported to avoid SSR issues and reduce initial bundle
+// plotly.js-dist-min types come from src/types/plotly-dist.d.ts
 let Plotly: typeof import('plotly.js-dist-min') | null = null
 const loadPlotly = async () => {
-  if (!Plotly) {
-    Plotly = await import('plotly.js-dist-min')
-  }
+  if (!Plotly) Plotly = await import('plotly.js-dist-min')
   return Plotly
 }
 
@@ -20,8 +18,10 @@ const DARK_LAYOUT: Partial<Layout> = {
   margin: { t: 36, r: 16, b: 48, l: 56 },
 }
 
+// Use object[] so callers don't fight Plotly's strict internal enums.
+// Plotly.react accepts any plain object array at runtime.
 interface PlotlyChartProps {
-  data: Data[]
+  data: object[]
   layout?: Partial<Layout>
   config?: Partial<Config>
   style?: React.CSSProperties
@@ -36,9 +36,10 @@ export function PlotlyChart({ data, layout, config, style, className }: PlotlyCh
     const el = divRef.current
 
     loadPlotly().then(plt => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       plt.react(
         el,
-        data,
+        data as any,
         { ...DARK_LAYOUT, ...layout },
         {
           responsive: true,

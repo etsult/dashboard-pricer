@@ -47,7 +47,7 @@ export default function Strategies() {
   ] : []
 
   const gammaChart = result ? [
-    { x: result.greeks_vs_forward.forward_range, y: result.greeks_vs_forward.gamma, name: 'Gamma', type: 'scatter' as const, fill: 'tozeroy', line: { color: '#f59e0b' } },
+    { x: result.greeks_vs_forward.forward_range, y: result.greeks_vs_forward.gamma, name: 'Gamma', type: 'scatter' as const, fill: 'tozeroy' as const, line: { color: '#f59e0b' } },
   ] : []
 
   return (

@@ -6,11 +6,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { PlotlyChart } from '@/components/charts/PlotlyChart'
-import { api } from '@/lib/api'
 import { fmt } from '@/lib/utils'
 
-// Simulate delta hedging client-side (the backend doesn't have a dedicated endpoint)
-// We approximate using daily P&L from the vol strategy endpoint, or do it locally
+// Abramowitz & Stegun approximation of erf (not in browser Math)
+function erf(x: number): number {
+  const t = 1 / (1 + 0.3275911 * Math.abs(x))
+  const y = 1 - (0.254829592 * t - 0.284496736 * t ** 2 + 1.421413741 * t ** 3
+    - 1.453152027 * t ** 4 + 1.061405429 * t ** 5) * Math.exp(-x * x)
+  return Math.sign(x) * y
+}
 
 function simulateDeltaHedge(
   S0: number, K: number, T: number, sigma: number, r: number, freq: number, n: number = 252
@@ -31,7 +35,7 @@ function simulateDeltaHedge(
   function bsDelta(S: number, tRemaining: number): number {
     if (tRemaining <= 0) return S > K ? 1 : 0
     const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * tRemaining) / (sigma * Math.sqrt(tRemaining))
-    return 0.5 * (1 + Math.erf ? Math.erf(d1 / Math.sqrt(2)) : (d1 > 0 ? 1 : -1) * 0.5)
+    return 0.5 * (1 + erf(d1 / Math.sqrt(2)))
   }
 
   // Hedging P&L
