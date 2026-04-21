@@ -7,11 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Tabs } from '@/components/ui/tabs'
 import { PlotlyChart } from '@/components/charts/PlotlyChart'
-import {
-  priceCapFloor, priceSwaption, priceIRS,
-  type CapFloorResponse, type SwaptionResponse, type IRSResponse,
-} from '@/lib/api'
-import { fmt } from '@/lib/utils'
+import { priceCapFloor, priceSwaption, type CapFloorResponse, type SwaptionResponse } from '@/lib/api'
 
 const DEFAULT_CURVE = [
   { tenor: 0.25, rate: 0.052 }, { tenor: 0.5, rate: 0.053 },
@@ -75,53 +71,13 @@ export default function IROptions() {
   const curve         = { type: 'manual' as const, points: DEFAULT_CURVE }
   const sigmaDecimal  = volType === 'normal' ? sigma / 10000 : sigma / 100
 
-  const { mutate, isPending, error } = useMutation({
-    mutationFn: () => {
-      if (isIrsTab) {
-        return priceIRS({
-          curve,
-          irs_type: instrType === 'irs_payer' ? 'payer' : 'receiver',
-          notional,
-          tenor_y: irsTenor,
-          fixed_rate: fixedRate,
-          fixed_freq: fixedFreq,
-          float_freq: floatFreq,
-          start_shift_y: startShift || undefined,
-          day_count: dayCount,
-          xccy,
-          basis_spread_bps: xccy ? basisBps : 0,
-          fx_rate: xccy ? fxRate : 1,
-          foreign_ccy: xccy ? foreignCcy : 'EUR',
-          pricer_model: pricerModel === 'nn' ? 'fast' : pricerModel,
-        })
-      }
-      if (isSwaptionTab) {
-        return priceSwaption({
-          curve,
-          swaption_type: instrType as 'payer' | 'receiver',
-          notional, expiry, swap_tenor: swapTenor, freq,
-          vol_type: volType, sigma: sigmaDecimal, strike,
-          pricer_model: pricerModel,
-          start_shift_y: startShift || undefined,
-          day_count: dayCount,
-          settlement_delay_y: settlementDelay || undefined,
-        })
-      }
-      return priceCapFloor({
-        curve,
-        instrument_type: instrType as 'cap' | 'floor',
-        notional, maturity, freq,
-        vol_type: volType, sigma: sigmaDecimal, strike,
-        pricer_model: pricerModel,
-        start_shift_y: startShift || undefined,
-        day_count: dayCount,
-        settlement_delay_y: settlementDelay || undefined,
-      })
-    },
+  const { mutate, isPending, error } = useMutation<CapFloorResponse | SwaptionResponse>({
+    mutationFn: () => isSwaption
+      ? priceSwaption({ curve, swaption_type: instrType as 'payer' | 'receiver', notional, expiry, swap_tenor: swapTenor, freq, vol_type: volType, sigma: sigmaDecimal, strike })
+      : priceCapFloor({ curve, instrument_type: instrType as 'cap' | 'floor', notional, maturity, freq, vol_type: volType, sigma: sigmaDecimal, strike }),
     onSuccess: (res) => {
-      if (isIrsTab)      setIrsResult(res as IRSResponse)
-      else if (isSwaptionTab) setSwapResult(res as SwaptionResponse)
-      else               setCapResult(res as CapFloorResponse)
+      if (isSwaption) setSwapResult(res as unknown as SwaptionResponse)
+      else setCapResult(res as unknown as CapFloorResponse)
     },
   })
 

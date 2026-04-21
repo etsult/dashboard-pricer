@@ -74,7 +74,7 @@ export interface CapFloorResponse {
   caplet_details: { reset_years: number; pay_years: number; fwd_rate_pct: number; discount_factor: number; pv: number }[]
   sensitivity_strike: { x: number; price: number }[]
   sensitivity_vol: { x: number; price: number }[]
-  pricer_model: string
+  caplet_details?: { expiry: number; price: number }[]
 }
 
 export interface SwaptionRequest extends ExoticParams {
