@@ -299,6 +299,135 @@ def run_dca(
     return {"performance": perf, "daily": daily, "trades": trades}
 
 
+# ─── Timing Risk Analysis ─────────────────────────────────────────────────────
+
+def run_timing_analysis(
+    ticker: str,
+    start: date,
+    end: date,
+    total_amount: float,
+    transaction_cost_pct: float = 0.0,
+    sample_every_n_days: int = 5,
+) -> dict:
+    """
+    For every possible lump-sum entry date in [start, end], compute:
+      - final return if you invested total_amount on that day
+      - max drawdown experienced from that entry
+      - time to recover from the max drawdown (trading days)
+
+    Answers: "what was the worst timing?", "how long to recover?"
+
+    Returns
+    -------
+    dict with:
+      by_entry     : sampled list (one per ~sample_every_n_days)
+      worst_entry  : entry date with lowest final return
+      best_entry   : entry date with highest final return
+      dca_equivalent: null (placeholder for caller to compare)
+      worst_dd_path: drawdown path starting from worst entry
+    """
+    prices = _fetch_prices([ticker], start, end)
+    if prices.empty:
+        raise ValueError(f"No price data for {ticker} between {start} and {end}")
+
+    price_series = prices[ticker].dropna()
+    if len(price_series) < 20:
+        raise ValueError("Need at least 20 trading days of data.")
+
+    px = price_series.values.astype(float)
+    dates_str = [str(d) for d in price_series.index]
+    N = len(px)
+    p_end = px[-1]
+
+    # Final returns: vectorized O(N)
+    cost_drag = transaction_cost_pct
+    final_returns_frac = (p_end / px) * (1 - cost_drag) - 1  # decimal
+
+    # Sample indices for by_entry (limit response size)
+    sample_idx = list(range(0, N, max(sample_every_n_days, 1)))
+    if N - 1 not in sample_idx:
+        sample_idx.append(N - 1)
+
+    by_entry = []
+    for i in sample_idx:
+        sub = px[i:]
+        if len(sub) < 2:
+            continue
+
+        # Max drawdown
+        running_peak = np.maximum.accumulate(sub)
+        dd = (sub - running_peak) / running_peak   # <= 0
+        max_dd = float(dd.min())
+        max_dd_day = int(np.argmin(dd))
+
+        # Peak before the trough (to measure recovery from there)
+        peak_before_trough = int(np.argmax(sub[:max_dd_day + 1])) if max_dd_day > 0 else 0
+        peak_price_level = sub[peak_before_trough]
+
+        # Recovery: first index at or after trough where price >= peak
+        recovery_days: int | None = None
+        ever_recovered = False
+        for j in range(max_dd_day, len(sub)):
+            if sub[j] >= peak_price_level:
+                recovery_days = j - peak_before_trough
+                ever_recovered = True
+                break
+
+        by_entry.append({
+            "date":                 dates_str[i],
+            "final_return_pct":     round(float(final_returns_frac[i]) * 100, 2),
+            "max_drawdown_pct":     round(max_dd * 100, 2),
+            "time_to_recover_days": recovery_days,
+            "ever_recovered":       ever_recovered,
+        })
+
+    # Worst / best across ALL dates (not just sampled)
+    worst_i = int(np.argmin(final_returns_frac))
+    best_i  = int(np.argmax(final_returns_frac))
+
+    # Drawdown path from worst entry (for chart)
+    sub_worst    = px[worst_i:]
+    rp_worst     = np.maximum.accumulate(sub_worst)
+    dd_worst     = (sub_worst - rp_worst) / rp_worst * 100
+
+    # Time to recover for worst entry
+    worst_max_dd_i = int(np.argmin(dd_worst))
+    wdd_peak_i = int(np.argmax(sub_worst[:worst_max_dd_i + 1])) if worst_max_dd_i > 0 else 0
+    wdd_peak_px = sub_worst[wdd_peak_i]
+    worst_recovery_days: int | None = None
+    for j in range(worst_max_dd_i, len(sub_worst)):
+        if sub_worst[j] >= wdd_peak_px:
+            worst_recovery_days = j - wdd_peak_i
+            break
+
+    return {
+        "ticker":           ticker,
+        "end_date":         dates_str[-1],
+        "n_entries":        len(by_entry),
+        "by_entry":         by_entry,
+        "worst_entry": {
+            "date":                 dates_str[worst_i],
+            "entry_price":          round(float(px[worst_i]), 4),
+            "final_return_pct":     round(float(final_returns_frac[worst_i]) * 100, 2),
+            "time_to_recover_days": worst_recovery_days,
+            "ever_recovered":       worst_recovery_days is not None,
+        },
+        "best_entry": {
+            "date":             dates_str[best_i],
+            "entry_price":      round(float(px[best_i]), 4),
+            "final_return_pct": round(float(final_returns_frac[best_i]) * 100, 2),
+        },
+        "median_return_pct": round(float(np.median(final_returns_frac)) * 100, 2),
+        "pct_entries_positive": round(float((final_returns_frac > 0).mean()) * 100, 1),
+        "worst_dd_path": {
+            "dates":          dates_str[worst_i:],
+            "drawdown_pct":   [round(float(x), 2) for x in dd_worst],
+            "portfolio_value": [round(total_amount * float(px[worst_i + j]) / px[worst_i], 2)
+                                for j in range(len(sub_worst))],
+        },
+    }
+
+
 # ─── All Weather Portfolio ────────────────────────────────────────────────────
 
 # Ray Dalio's original allocation (ETF proxies)

@@ -20,10 +20,11 @@ from api.schemas.research import (
     LumpSumRequest, DCARequest, CompareRequest,
     EquityBacktestResponse, CompareResponse,
     AllWeatherRequest, AllWeatherResponse,
+    TimingAnalysisRequest,
 )
 from research.backtest import run_dh_straddle
 from research.costs import CostModel
-from research.strategies.equity import run_lump_sum, run_dca, run_all_weather
+from research.strategies.equity import run_lump_sum, run_dca, run_all_weather, run_timing_analysis
 
 router = APIRouter(prefix="/research", tags=["Research"])
 
@@ -166,6 +167,34 @@ async def compare_lump_sum_vs_dca(req: CompareRequest) -> CompareResponse:
         lump_sum=EquityBacktestResponse(**ls_result),
         dca=EquityBacktestResponse(**dca_result),
     )
+
+
+# ─── Timing Risk ──────────────────────────────────────────────────────────────
+
+@router.post("/backtest/timing-analysis")
+async def backtest_timing_analysis(req: TimingAnalysisRequest) -> dict:
+    """
+    For every possible lump-sum entry date, compute final return, max drawdown,
+    and time to recover. Identifies worst / best entry timing and shows the
+    drawdown path from the worst entry.
+    """
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            None,
+            partial(
+                run_timing_analysis,
+                ticker=req.ticker, start=req.start, end=req.end,
+                total_amount=req.total_amount,
+                transaction_cost_pct=req.transaction_cost_pct,
+                sample_every_n_days=req.sample_every_n_days,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Analysis error: {exc}")
+    return result
 
 
 # ─── All Weather ──────────────────────────────────────────────────────────────

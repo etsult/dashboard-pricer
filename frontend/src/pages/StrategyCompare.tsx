@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { PlotlyChart } from '@/components/charts/PlotlyChart'
-import { compareStrategies } from '@/lib/api'
+import { compareStrategies, runTimingAnalysis, type TimingAnalysisResult } from '@/lib/api'
 import { fmt } from '@/lib/utils'
 
 export default function StrategyCompare() {
@@ -16,14 +16,23 @@ export default function StrategyCompare() {
   const [amount, setAmount]   = useState(10000)
   const [freq, setFreq]       = useState('monthly')
   const [cost, setCost]       = useState(0)
-  const [result, setResult]   = useState<{ lump_sum: unknown; dca: unknown } | null>(null)
+  const [result, setResult]       = useState<{ lump_sum: unknown; dca: unknown } | null>(null)
+  const [timing, setTiming]       = useState<TimingAnalysisResult | null>(null)
 
   const { mutate, isPending, error } = useMutation({
     mutationFn: () => compareStrategies({
       ticker, start, end, total_amount: amount,
       dca_frequency: freq, transaction_cost_pct: cost / 100,
     }),
-    onSuccess: setResult,
+    onSuccess: (data) => { setResult(data); setTiming(null) },
+  })
+
+  const timingMut = useMutation({
+    mutationFn: () => runTimingAnalysis({
+      ticker, start, end, total_amount: amount,
+      transaction_cost_pct: cost / 100, sample_every_n_days: 5,
+    }),
+    onSuccess: setTiming,
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -93,10 +102,14 @@ export default function StrategyCompare() {
               color={dca.performance.total_return_pct >= 0 ? 'text-positive' : 'text-negative'} />
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Stat label="LS Sharpe"    value={fmt(ls.performance.sharpe_ratio)} />
-            <Stat label="LS Max DD"    value={`${fmt(ls.performance.max_drawdown_pct)}%`} color="text-negative" />
-            <Stat label="DCA Sharpe"   value={fmt(dca.performance.sharpe_ratio)} />
-            <Stat label="DCA Max DD"   value={`${fmt(dca.performance.max_drawdown_pct)}%`} color="text-negative" />
+            <Stat label="LS Sharpe"              value={fmt(ls.performance.sharpe)} />
+            <Stat label="LS Max DD"              value={`${fmt(ls.performance.max_drawdown_pct)}%`} color="text-negative" />
+            <Stat label="LS DD Recovery (days)"  value={ls.performance.max_dd_duration_days ?? '—'} />
+            <Stat label="LS % time in DD"        value={`${fmt(ls.performance.pct_in_drawdown)}%`} color="text-negative" />
+            <Stat label="DCA Sharpe"             value={fmt(dca.performance.sharpe)} />
+            <Stat label="DCA Max DD"             value={`${fmt(dca.performance.max_drawdown_pct)}%`} color="text-negative" />
+            <Stat label="DCA DD Recovery (days)" value={dca.performance.max_dd_duration_days ?? '—'} />
+            <Stat label="DCA % time in DD"       value={`${fmt(dca.performance.pct_in_drawdown)}%`} color="text-negative" />
           </div>
 
           <Card>
@@ -109,8 +122,133 @@ export default function StrategyCompare() {
               }}
             />
           </Card>
+
+          {/* Timing analysis trigger */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Timing Risk — What If You Picked the Worst Moment?</CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => timingMut.mutate()}
+                disabled={timingMut.isPending}
+              >
+                {timingMut.isPending ? 'Analysing…' : 'Run Timing Analysis'}
+              </Button>
+            </CardHeader>
+            <p className="text-muted text-xs">
+              Simulates investing ${amount.toLocaleString()} on every possible date.
+              Shows the distribution of outcomes, worst/best timing, and drawdown from worst entry.
+            </p>
+            {timingMut.error && (
+              <p className="text-negative text-xs mt-2">{(timingMut.error as Error).message}</p>
+            )}
+          </Card>
         </>
       )}
+
+      {/* ── Timing analysis results ── */}
+      {timing && (() => {
+        const returnScatter = [{
+          x: timing.by_entry.map(e => e.date),
+          y: timing.by_entry.map(e => e.final_return_pct),
+          type: 'scatter' as const,
+          mode: 'markers' as const,
+          marker: {
+            color: timing.by_entry.map(e => e.final_return_pct >= 0 ? '#22c55e' : '#ef4444'),
+            size: 4, opacity: 0.7,
+          },
+          name: 'Final return by entry date',
+          hovertemplate: '%{x}<br>Return: %{y:.1f}%<extra></extra>',
+        }]
+
+        const ddScatter = [{
+          x: timing.worst_dd_path.dates,
+          y: timing.worst_dd_path.drawdown_pct,
+          type: 'scatter' as const,
+          mode: 'lines' as const,
+          fill: 'tozeroy' as const,
+          fillcolor: 'rgba(239,68,68,0.15)',
+          line: { color: '#ef4444', width: 1.5 },
+          name: 'Drawdown from worst entry',
+        }]
+
+        const pvWorstChart = [{
+          x: timing.worst_dd_path.dates,
+          y: timing.worst_dd_path.portfolio_value,
+          type: 'scatter' as const,
+          mode: 'lines' as const,
+          line: { color: '#f4a261', width: 2 },
+          name: `Worst entry (${timing.worst_entry.date})`,
+        }]
+
+        return (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <Stat label="Worst entry return"    value={`${fmt(timing.worst_entry.final_return_pct)}%`}
+                color="text-negative" sub={`Entry: ${timing.worst_entry.date}`} />
+              <Stat label="Best entry return"     value={`${fmt(timing.best_entry.final_return_pct)}%`}
+                color="text-positive" sub={`Entry: ${timing.best_entry.date}`} />
+              <Stat label="Median return"         value={`${fmt(timing.median_return_pct)}%`} />
+              <Stat label="% entries profitable"  value={`${timing.pct_entries_positive}%`}
+                color={timing.pct_entries_positive >= 50 ? 'text-positive' : 'text-negative'} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {timing.worst_entry.time_to_recover_days !== null ? (
+                <Stat label="Worst entry — DD recovery"
+                  value={`${timing.worst_entry.time_to_recover_days} trading days`}
+                  sub={timing.worst_entry.ever_recovered ? 'Recovered' : 'Never recovered in period'}
+                  color={timing.worst_entry.ever_recovered ? 'text-positive' : 'text-negative'} />
+              ) : (
+                <Stat label="Worst entry — DD recovery" value="Never recovered" color="text-negative" />
+              )}
+              <Stat label="Entry dates analysed" value={timing.n_entries.toLocaleString()} />
+            </div>
+
+            <Card>
+              <CardHeader><CardTitle>Return Distribution by Entry Date</CardTitle></CardHeader>
+              <p className="text-muted text-xs mb-3">
+                Each dot = investing ${amount.toLocaleString()} on that date and holding until {timing.end_date}.
+                Green = profitable, red = loss.
+              </p>
+              <PlotlyChart
+                data={returnScatter}
+                layout={{
+                  xaxis: { title: { text: 'Entry date' } },
+                  yaxis: { title: { text: 'Final return (%)' }, zeroline: true, zerolinecolor: '#6b7280' },
+                  shapes: [
+                    { type: 'line', x0: timing.worst_entry.date, x1: timing.worst_entry.date,
+                      y0: 0, y1: 1, yref: 'paper', line: { color: '#ef4444', dash: 'dot', width: 1 } },
+                    { type: 'line', x0: timing.best_entry.date,  x1: timing.best_entry.date,
+                      y0: 0, y1: 1, yref: 'paper', line: { color: '#22c55e', dash: 'dot', width: 1 } },
+                  ],
+                }}
+              />
+            </Card>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Portfolio Value — Worst Entry ({timing.worst_entry.date})</CardTitle>
+                </CardHeader>
+                <PlotlyChart
+                  data={pvWorstChart}
+                  layout={{ yaxis: { title: { text: 'Value ($)' } } }}
+                  style={{ height: 260 }}
+                />
+              </Card>
+              <Card>
+                <CardHeader><CardTitle>Drawdown from Worst Entry</CardTitle></CardHeader>
+                <PlotlyChart
+                  data={ddScatter}
+                  layout={{ yaxis: { title: { text: 'Drawdown (%)' }, zeroline: true, zerolinecolor: '#6b7280' } }}
+                  style={{ height: 260 }}
+                />
+              </Card>
+            </div>
+          </>
+        )
+      })()}
     </div>
   )
 }

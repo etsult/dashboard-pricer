@@ -17,6 +17,7 @@ const nav = [
   { to: '/rates-hub',       label: 'Rates Hub',         icon: DollarSign },
   { to: '/strategy-compare',label: 'Strategy Compare',  icon: GitCompare },
   { to: '/portfolio-risk',  label: 'Portfolio Risk',    icon: Shield },
+  { to: '/intraday-greeks', label: 'Intraday Greeks',   icon: Waves, badge: 'LIVE' },
   { to: '/book-generator',  label: 'Book Generator',    icon: BookOpen },
   { to: '/vol-cube',        label: 'Vol Cube',          icon: Layers },
   { to: '/benchmark',       label: 'Benchmark',         icon: Gauge },
