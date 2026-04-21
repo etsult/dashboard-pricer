@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, TrendingUp, BarChart3, Radio, Zap,
   Landmark, Activity, DollarSign, GitCompare, Shield,
-  BookOpen, Layers, Gauge, ChevronRight
+  BookOpen, Layers, Gauge, ChevronRight, Repeat2, Droplets
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -10,7 +10,7 @@ const nav = [
   { to: '/',                label: 'Home',             icon: LayoutDashboard },
   { to: '/strategies',      label: 'Strategies',        icon: TrendingUp },
   { to: '/vol-surface',     label: 'Vol Surface',       icon: BarChart3 },
-  { to: '/live-monitor',    label: 'Live Monitor',      icon: Radio,    badge: 'LIVE' },
+  { to: '/live-monitor',    label: 'Live Monitor',      icon: Radio,      badge: 'LIVE' },
   { to: '/vol-strategy',    label: 'Vol Strategy',      icon: Zap },
   { to: '/ir-options',      label: 'IR Options',        icon: Landmark },
   { to: '/delta-hedge',     label: 'Delta Hedge',       icon: Activity },
@@ -20,6 +20,8 @@ const nav = [
   { to: '/book-generator',  label: 'Book Generator',    icon: BookOpen },
   { to: '/vol-cube',        label: 'Vol Cube',          icon: Layers },
   { to: '/benchmark',       label: 'Benchmark',         icon: Gauge },
+  { to: '/market-making',   label: 'Market Making',     icon: Repeat2,    badge: 'NEW' },
+  { to: '/amm',             label: 'AMM LP',            icon: Droplets,   badge: 'NEW' },
 ]
 
 export default function Sidebar() {

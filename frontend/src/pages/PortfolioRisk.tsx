@@ -55,7 +55,7 @@ export default function PortfolioRisk() {
     name: 'Portfolio PV',
   }] : []
 
-  const dv01Chart = risk ? Object.entries(risk.aggregate.by_expiry).map(([k, v], i) => ({
+  const dv01Chart = risk ? Object.entries(risk.aggregate.by_expiry).map(([k, v]) => ({
     x: [k], y: [v.dv01],
     name: k, type: 'bar' as const,
     marker: { color: v.dv01 >= 0 ? '#3b82f6' : '#ef4444' },

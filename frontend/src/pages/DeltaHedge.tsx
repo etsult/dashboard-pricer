@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { PlotlyChart } from '@/components/charts/PlotlyChart'
-import { api } from '@/lib/api'
 import { fmt } from '@/lib/utils'
 
 // Simulate delta hedging client-side (the backend doesn't have a dedicated endpoint)
@@ -31,7 +30,10 @@ function simulateDeltaHedge(
   function bsDelta(S: number, tRemaining: number): number {
     if (tRemaining <= 0) return S > K ? 1 : 0
     const d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * tRemaining) / (sigma * Math.sqrt(tRemaining))
-    return 0.5 * (1 + Math.erf ? Math.erf(d1 / Math.sqrt(2)) : (d1 > 0 ? 1 : -1) * 0.5)
+    const z = d1 / Math.SQRT2
+    const t = 1 / (1 + 0.3275911 * Math.abs(z))
+    const erf = 1 - (0.254829592*t - 0.284496736*t**2 + 1.421413741*t**3 - 1.453152027*t**4 + 1.061405429*t**5) * Math.exp(-z*z)
+    return 0.5 * (1 + (z >= 0 ? erf : -erf))
   }
 
   // Hedging P&L

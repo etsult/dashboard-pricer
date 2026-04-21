@@ -41,12 +41,12 @@ export default function Benchmark() {
     onSuccess: ({ rows, elapsed }) => { setResults(rows); setTiming(elapsed) },
   })
 
-  const chartData = results ? [
-    { x: results.map(r => r.strike * 100), y: results.map(r => r.capPV),      name: 'Cap',            line: { color: '#3b82f6' } },
-    { x: results.map(r => r.strike * 100), y: results.map(r => r.floorPV),    name: 'Floor',          line: { color: '#a78bfa' } },
-    { x: results.map(r => r.strike * 100), y: results.map(r => r.payerPV),    name: 'Payer Swaption', line: { color: '#22c55e', dash: 'dot' } },
-    { x: results.map(r => r.strike * 100), y: results.map(r => r.receiverPV), name: 'Rcvr Swaption',  line: { color: '#f59e0b', dash: 'dot' } },
-  ].map(d => ({ ...d, type: 'scatter' as const, mode: 'lines+markers' as const })) : []
+  const chartData: object[] = results ? [
+    { x: results.map(r => r.strike * 100), y: results.map(r => r.capPV),      name: 'Cap',            type: 'scatter', mode: 'lines+markers', line: { color: '#3b82f6' } },
+    { x: results.map(r => r.strike * 100), y: results.map(r => r.floorPV),    name: 'Floor',          type: 'scatter', mode: 'lines+markers', line: { color: '#a78bfa' } },
+    { x: results.map(r => r.strike * 100), y: results.map(r => r.payerPV),    name: 'Payer Swaption', type: 'scatter', mode: 'lines+markers', line: { color: '#22c55e', dash: 'dot' } },
+    { x: results.map(r => r.strike * 100), y: results.map(r => r.receiverPV), name: 'Rcvr Swaption',  type: 'scatter', mode: 'lines+markers', line: { color: '#f59e0b', dash: 'dot' } },
+  ] : []
 
   return (
     <div className="space-y-6">

@@ -63,6 +63,7 @@ export interface CapFloorResponse {
   price: number; price_bps: number; strike_pct: number
   sensitivity_strike: { x: number; price: number }[]
   sensitivity_vol: { x: number; price: number }[]
+  caplet_details?: { expiry: number; price: number }[]
 }
 
 export interface SwaptionRequest {

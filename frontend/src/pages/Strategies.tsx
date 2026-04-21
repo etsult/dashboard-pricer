@@ -37,17 +37,17 @@ export default function Strategies() {
   const updateLeg = (i: number, patch: Partial<Leg>) =>
     setLegs(l => l.map((leg, idx) => idx === i ? { ...leg, ...patch } : leg))
 
-  const payoffChart = result ? [
+  const payoffChart: object[] = result ? [
     { x: result.payoff.forward_range, y: result.payoff.payoff_today,  name: 'P&L Today',     line: { color: '#3b82f6', width: 2 } },
     { x: result.payoff.forward_range, y: result.payoff.payoff_expiry, name: 'Payoff Expiry',  line: { color: '#22c55e', width: 2, dash: 'dot' } },
   ] : []
 
-  const deltaChart = result ? [
+  const deltaChart: object[] = result ? [
     { x: result.greeks_vs_forward.forward_range, y: result.greeks_vs_forward.delta, name: 'Delta', line: { color: '#a78bfa' } },
   ] : []
 
-  const gammaChart = result ? [
-    { x: result.greeks_vs_forward.forward_range, y: result.greeks_vs_forward.gamma, name: 'Gamma', type: 'scatter' as const, fill: 'tozeroy', line: { color: '#f59e0b' } },
+  const gammaChart: object[] = result ? [
+    { x: result.greeks_vs_forward.forward_range, y: result.greeks_vs_forward.gamma, name: 'Gamma', type: 'scatter', fill: 'tozeroy', line: { color: '#f59e0b' } },
   ] : []
 
   return (

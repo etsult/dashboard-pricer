@@ -13,6 +13,8 @@ import PortfolioRisk from '@/pages/PortfolioRisk'
 import BookGenerator from '@/pages/BookGenerator'
 import VolCube from '@/pages/VolCube'
 import Benchmark from '@/pages/Benchmark'
+import MarketMaking from '@/pages/MarketMaking'
+import AMM from '@/pages/AMM'
 
 export default function App() {
   return (
@@ -32,6 +34,8 @@ export default function App() {
           <Route path="book-generator" element={<BookGenerator />} />
           <Route path="vol-cube" element={<VolCube />} />
           <Route path="benchmark" element={<Benchmark />} />
+          <Route path="market-making" element={<MarketMaking />} />
+          <Route path="amm" element={<AMM />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>

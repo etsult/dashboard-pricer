@@ -15,25 +15,14 @@ export default function VolCube() {
     staleTime: 300_000,
   })
 
-  const heatmapData = data ? [{
-    z: data.vols_bps as number[][],
-    x: data.tenor_grid as string[],
-    y: data.expiry_grid as string[],
-    type: 'heatmap' as const,
-    colorscale: 'Viridis',
-    colorbar: { title: 'Vol (bps)' },
+  const heatmapData: object[] = data ? [{
+    z: data.vols_bps, x: data.tenor_grid, y: data.expiry_grid,
+    type: 'heatmap', colorscale: 'Viridis', colorbar: { title: { text: 'Vol (bps)' } },
   }] : []
 
-  const surfaceData = data ? [{
-    z: data.vols_bps as number[][],
-    x: data.tenor_grid as string[],
-    y: data.expiry_grid as string[],
-    type: 'surface' as const,
-    colorscale: 'Viridis',
-    showscale: true,
-    contours: {
-      z: { show: true, usecolormap: true, highlightcolor: '#42f462', project: { z: true } },
-    },
+  const surfaceData: object[] = data ? [{
+    z: data.vols_bps, x: data.tenor_grid, y: data.expiry_grid,
+    type: 'surface', colorscale: 'Viridis', showscale: true,
   }] : []
 
   return (
