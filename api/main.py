@@ -23,7 +23,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routers import strategies, ir_options, market_data, research, ideas, execution
-from api.routers import books, vol_cube_router, ws
+from api.routers import books, vol_cube_router, ws, market_making
 
 
 # ─── Lifespan (startup / shutdown) ────────────────────────────────────────────
@@ -91,6 +91,7 @@ app.include_router(market_data.router,      prefix="/api")
 app.include_router(research.router,         prefix="/api")
 app.include_router(ideas.router,            prefix="/api")
 app.include_router(execution.router,        prefix="/api")
+app.include_router(market_making.router,    prefix="/api")
 app.include_router(ws.router)               # WebSocket — no /api prefix (uses /ws/...)
 
 
